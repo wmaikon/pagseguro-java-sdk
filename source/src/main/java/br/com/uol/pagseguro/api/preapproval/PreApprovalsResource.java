@@ -58,6 +58,9 @@ public class PreApprovalsResource {
 
   private static final PreApprovalCancellationV2MapConverter PRE_APPROVAL_CANCELLATION_MC =
       new PreApprovalCancellationV2MapConverter();
+  
+  private static final PreApprovalSubscriptionV2MapConverter PRE_APPROVAL_SUBSCRIPTION_MC =
+	      new PreApprovalSubscriptionV2MapConverter();
 
   private final PagSeguro pagSeguro;
   private final HttpClient httpClient;
@@ -208,5 +211,40 @@ public class PreApprovalsResource {
     LOGGER.info("Parseamento finalizado");
     LOGGER.info("Cobranca finalizada");
     return chargedPreApproval;
+  }
+  
+  /**
+   * Pre Approval Subscription
+   *
+   * @param subscription Pre Approval Subscription
+   * @return Response of Pre Approval Subscribed
+   * @see PreApprovalSubscription
+   * @see SubscribedPreApproval
+   */
+  public SubscribedPreApproval subscribe(PreApprovalSubscription subscription){
+	  LOGGER.info("Iniciando adesao");
+	    LOGGER.info("Convertendo valores");
+	    final RequestMap map = PRE_APPROVAL_SUBSCRIPTION_MC.convert(subscription);
+	    LOGGER.info("Valores convertidos");
+	    final HttpResponse response;
+	    try {
+	      LOGGER.debug(String.format("Parametros: %s", map));
+	      response = httpClient.execute(HttpMethod.POST, String.format(Endpoints.PRE_APPROVAL_SUBSCRIBE,
+	          pagSeguro.getHost()), null, map.toHttpRequestBody(CharSet.ENCODING_ISO));
+	      LOGGER.debug(String.format("Resposta: %s", response.toString()));
+	    } catch (IOException e) {
+	      LOGGER.error("Erro ao executar adesao");
+	      throw new PagSeguroLibException(e);
+	    }
+	    LOGGER.info("Parseando XML de resposta");
+	    SubscribedPreApprovalResponseXML subscribedPreApproval = response.parseXMLContent(pagSeguro,
+	    		SubscribedPreApprovalResponseXML.class);
+	    LOGGER.info("Parseamento finalizado");
+	    LOGGER.info("Cobranca finalizada");
+	    return subscribedPreApproval;
+  }
+  
+  public SubscribedPreApproval subscribe(Builder<PreApprovalSubscription> subscription){
+	  return subscribe(subscription.build());
   }
 }
