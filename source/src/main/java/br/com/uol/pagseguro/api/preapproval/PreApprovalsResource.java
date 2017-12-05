@@ -21,13 +21,23 @@
 
 package br.com.uol.pagseguro.api.preapproval;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.HashMap;
+import java.util.Map;
 
 import br.com.uol.pagseguro.api.Endpoints;
 import br.com.uol.pagseguro.api.PagSeguro;
 import br.com.uol.pagseguro.api.exception.PagSeguroLibException;
 import br.com.uol.pagseguro.api.http.HttpClient;
 import br.com.uol.pagseguro.api.http.HttpMethod;
+import br.com.uol.pagseguro.api.http.HttpRequestBody;
 import br.com.uol.pagseguro.api.http.HttpResponse;
 import br.com.uol.pagseguro.api.preapproval.cancel.CancelPreApprovalResponseXML;
 import br.com.uol.pagseguro.api.preapproval.cancel.CancelledPreApproval;
@@ -58,7 +68,7 @@ public class PreApprovalsResource {
 
   private static final PreApprovalCancellationV2MapConverter PRE_APPROVAL_CANCELLATION_MC =
       new PreApprovalCancellationV2MapConverter();
-  
+
   private static final PreApprovalSubscriptionV2MapConverter PRE_APPROVAL_SUBSCRIPTION_MC =
 	      new PreApprovalSubscriptionV2MapConverter();
 
@@ -212,7 +222,7 @@ public class PreApprovalsResource {
     LOGGER.info("Cobranca finalizada");
     return chargedPreApproval;
   }
-  
+
   /**
    * Pre Approval Subscription
    *
@@ -243,8 +253,82 @@ public class PreApprovalsResource {
 	    LOGGER.info("Cobranca finalizada");
 	    return subscribedPreApproval;
   }
-  
+
   public SubscribedPreApproval subscribe(Builder<PreApprovalSubscription> subscription){
 	  return subscribe(subscription.build());
+  }
+
+  /**
+   * Pre Approval Subscription with body in JSON Object.
+   * As the above method PreApprovalsResource{@link #subscribe(PreApprovalSubscription)} is NOT
+   * working (actually, status 405), souding as not implemented in V2. The URL for
+   * PRE_APPROVAL_SUBSCRIBE was altered, removing the prefix "v2" and V1 clearly doesn' support
+   * content/body in form format. This method was written as an alternative until that get done.
+   *
+   * @param subscription Pre Approval Subscription
+   * @return Response of Pre Approval Subscribed
+   * @see PreApprovalSubscription
+   * @see SubscribedPreApproval
+   */
+  public SubscribedPreApproval subscribeJson(PreApprovalSubscription subscription){
+    LOGGER.info("Iniciando adesao com body em json");
+    final HttpResponse response;
+    try {
+      response = httpClient.execute(HttpMethod.POST, String.format(Endpoints.PRE_APPROVAL_SUBSCRIBE,
+              pagSeguro.getHost()), getSubscribeJsonHeaders(), getSubscribeJsonBody(subscription));
+      LOGGER.debug(String.format("Resposta: %s", response.toString()));
+    } catch (IOException e) {
+      LOGGER.error("Erro ao executar adesao");
+      throw new PagSeguroLibException(e);
+    }
+    LOGGER.info("Parseando XML de resposta");
+    SubscribedPreApprovalResponseXML subscribedPreApproval = response.parseXMLContent(pagSeguro,
+            SubscribedPreApprovalResponseXML.class);
+    LOGGER.info("Parseamento finalizado");
+    LOGGER.info("Cobranca finalizada");
+    return subscribedPreApproval;
+  }
+
+  public SubscribedPreApproval subscribeJson(Builder<PreApprovalSubscription> subscription){
+    return subscribeJson(subscription.build());
+  }
+
+  private static Map<String, String> getSubscribeJsonHeaders(){
+    Map<String, String> headers = new HashMap();
+    headers.put("Content-type", "application/json");
+    headers.put("Accept", "application/vnd.pagseguro.com.br.v3+xml;charset=ISO-8859-1");
+    return headers;
+  }
+
+  private static HttpRequestBody getSubscribeJsonBody(PreApprovalSubscription subscription){
+    HttpRequestBody body = new HttpRequestBody(
+            String.format("application/json; charset=%s", CharSet.ENCODING_ISO),
+            parse2JsonString(subscription),
+            CharSet.ENCODING_ISO);
+    return body;
+  }
+
+  private static String parse2JsonString(PreApprovalSubscription subscription) {
+    String s = null;
+    ObjectMapper mapper = new ObjectMapper();
+    mapper.configure(JsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES, true);
+    mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+    mapper.setDateFormat(new SimpleDateFormat("dd/MM/yyyy"));
+
+    /* WORKAROUND
+     Creditcard has billingAddress object but actually api, wants it as a reference inside holder.
+     Probably a difference between v1 and v2? Lets see it later...
+      */
+    JsonNode node = mapper.valueToTree(subscription);
+    JsonNode billingAddress = ((ObjectNode) node.get("paymentMethod").get("creditCard")).remove("billingAddress");
+    ((ObjectNode) node.get("paymentMethod")).put("type", "CREDITCARD");
+    ((ObjectNode) node.get("paymentMethod").get("creditCard").get("holder")).set("billingAddress", billingAddress);
+
+    try {
+      s = mapper.writeValueAsString(node);
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+    return s;
   }
 }
