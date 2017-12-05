@@ -111,12 +111,11 @@ public final class Endpoints {
   /**
    * PRE APPROVAL
    */
-  
 
   /**
    * Pre approval subscription
    */
-  public static final String PRE_APPROVAL_SUBSCRIBE = "%s/v2/pre-approvals";
+  public static final String PRE_APPROVAL_SUBSCRIBE = "%s/pre-approvals";
 
   /**
    * Pre approval registration
